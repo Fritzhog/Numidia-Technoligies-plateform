@@ -1,0 +1,183 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: numidia
+      POSTGRES_USER: numidia
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.3
+    restart: always
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: >-
+      start-dev --import-realm /opt/keycloak/data/import/realm-export.json
+    volumes:
+      - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "8080:8080"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: always
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "29092:29092"
+
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    restart: always
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      cluster.name: opensearch-cluster
+      network.host: 0.0.0.0
+    ports:
+      - "9200:9200"
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    restart: always
+    environment:
+      OPENSEARCH_HOSTS: http://opensearch:9200
+    depends_on:
+      - opensearch
+    ports:
+      - "5601:5601"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: always
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8081:8080"
+
+  citizens-service:
+    build: ./services/citizens-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: citizens
+    ports:
+      - "8001:8000"
+
+  customs-risk-service:
+    build: ./services/customs-risk-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+      - opensearch
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_DECLARATION_TOPIC: customs.declaration.created
+      KAFKA_RISK_TOPIC: customs.declaration.risked
+      OPENSEARCH_HOST: http://opensearch:9200
+    ports:
+      - "8002:8000"
+
+  transport-vehicle-service:
+    build: ./services/transport-vehicle-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: transport.vehicle.registered
+    ports:
+      - "8003:8000"
+
+  frontend:
+    build: ./services/frontend
+    restart: always
+    depends_on:
+      - keycloak
+    environment:
+      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_REALM: numidia
+      VITE_KEYCLOAK_CLIENT_ID: frontend
+      VITE_API_CITIZENS: http://localhost:8001
+      VITE_API_CUSTOMS: http://localhost:8002
+      VITE_API_TRANSPORT: http://localhost:8003
+    ports:
+      - "5173:5173"
+
+  smoke:
+    build: ./tests/smoke
+    profiles:
+      - test
+    depends_on:
+      - citizens-service
+      - customs-risk-service
+      - transport-vehicle-service
+      - keycloak
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KEYCLOAK_USERNAME: demo@numidia.dz
+      KEYCLOAK_PASSWORD: Passw0rd!
+      API_CITIZENS: http://citizens-service:8000
+      API_CUSTOMS: http://customs-risk-service:8000
+      API_TRANSPORT: http://transport-vehicle-service:8000
+    command: ["/bin/sh", "/app/run_smoke.sh"]
