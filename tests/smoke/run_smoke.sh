@@ -8,9 +8,9 @@ wait_for_health() {
   done
 }
 
-wait_for_health http://citizens-service:8001/health
-wait_for_health http://customs-risk-service:8002/health
-wait_for_health http://transport-vehicle-service:8003/health
+wait_for_health http://citizens-service:8000/health
+wait_for_health http://customs-risk-service:8000/health
+wait_for_health http://transport-vehicle-service:8000/health
 
 # Obtain access token from Keycloak (assumes direct access grants enabled)
 TOKEN=$(curl -s -X POST \
@@ -23,23 +23,23 @@ TOKEN=$(curl -s -X POST \
 # Create a citizen
 curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"nin":"NIN1001","name":"Alice"}' \
-  http://citizens-service:8001/citizens
+  http://citizens-service:8000/citizens
 
 # Create a customs declaration
 curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"nin":"NIN1001","origin_country":"KY","value":120000,"goods":"electronics"}' \
-  http://customs-risk-service:8002/declarations
+  -d '{"nin":"NIN1001","origin_country":"KY","value":120000,"goods":"electronic components"}' \
+  http://customs-risk-service:8000/declarations
 
 # Register a vehicle
 curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"nin":"NIN1001","vehicle":"ABC-123"}' \
-  http://transport-vehicle-service:8003/vehicles
+  http://transport-vehicle-service:8000/vehicles
 
 # Give some time for the risk computation pipeline
 sleep 5
 
 # Verify that at least one risk is present
-COUNT=$(curl -s http://customs-risk-service:8002/risks | jq '. | length')
+COUNT=$(curl -s http://customs-risk-service:8000/risks | jq '. | length')
 if [ "$COUNT" -gt 0 ]; then
   echo "Risks available: $COUNT"
   exit 0
