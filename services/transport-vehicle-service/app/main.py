@@ -40,7 +40,7 @@ producer = KafkaProducer(
 
 @app.get("/health")
 def health_check():
-    return {"status": "transport-vehicle-service healthy"}
+        return {"status": "ok"}
 
 @app.post("/vehicles")
 def register_vehicle(vehicle: dict, token=Depends(verify_token), db=Depends(get_db)):
@@ -60,7 +60,7 @@ def register_vehicle(vehicle: dict, token=Depends(verify_token), db=Depends(get_
     # Emit Kafka event
     event = {
         "vin": vehicle.get("vin"),
-        "owner_nin": vehicle.get("owner_nin"),
+                "owner_nin": vehicle.get("owner_nin"),
         "vehicle_type": vehicle.get("vehicle_type"),
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
