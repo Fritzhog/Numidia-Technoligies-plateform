@@ -27,3 +27,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     model VARCHAR,
     registration_date DATE DEFAULT CURRENT_DATE
 );
+
+CREATE USER keycloak WITH PASSWORD 'keycloak';
+CREATE DATABASE keycloak OWNER keycloak;
+
