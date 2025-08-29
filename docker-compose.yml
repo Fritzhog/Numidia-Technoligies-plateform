@@ -16,7 +16,7 @@ services:
     image: quay.io/keycloak/keycloak:23.0.3
     restart: always
     environment:
-            KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
