@@ -4,3 +4,4 @@ psycopg2-binary
 python-jose[cryptography]
 requests
 kafka-python
+psycopg2-pool

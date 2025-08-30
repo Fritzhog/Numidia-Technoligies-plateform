@@ -2,7 +2,9 @@ from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 import os
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from contextlib import contextmanager
 # Token verification is simplified for this prototype
 
 app = FastAPI()
@@ -15,15 +17,25 @@ DB_CONN = {
     'dbname': os.environ['DB_NAME'],
 }
 
+connection_pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=10,
+    **DB_CONN
+)
+
 # Simplified token verification – accepts any token
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     return credentials.credentials
 
 
+@contextmanager
 def get_db():
-    conn = psycopg2.connect(**DB_CONN)
-    conn.autocommit = True
-    return conn
+    conn = connection_pool.getconn()
+    try:
+        conn.autocommit = True
+        yield conn
+    finally:
+        connection_pool.putconn(conn)
 
 class Citizen(BaseModel):
     nin: str
