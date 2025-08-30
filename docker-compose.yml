@@ -127,6 +127,12 @@ services:
       KAFKA_TOPIC: citizens
     ports:
       - "8001:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   customs-risk-service:
     build: ./services/customs-risk-service
@@ -154,6 +160,12 @@ services:
       OPENSEARCH_HOST: http://opensearch:9200
     ports:
       - "8002:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   transport-vehicle-service:
     build: ./services/transport-vehicle-service
@@ -177,6 +189,12 @@ services:
       KAFKA_TOPIC: transport.vehicle.registered
     ports:
       - "8003:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   frontend:
     build: ./services/frontend
@@ -212,3 +230,9 @@ services:
       API_CUSTOMS: http://customs-risk-service:8000
       API_TRANSPORT: http://transport-vehicle-service:8000
     command: ["/bin/sh", "/app/run_smoke.sh"]
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
