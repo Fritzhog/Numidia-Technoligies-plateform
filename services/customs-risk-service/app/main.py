@@ -34,10 +34,16 @@ def get_connection_pool():
 logging.basicConfig(level=logging.INFO)
 
 # Kafka producer
-producer = KafkaProducer(
-    bootstrap_servers=os.environ['KAFKA_BOOTSTRAP_SERVERS'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-)
+_kafka_producer = None
+
+def get_kafka_producer():
+    global _kafka_producer
+    if _kafka_producer is None:
+        _kafka_producer = KafkaProducer(
+            bootstrap_servers=os.environ['KAFKA_BOOTSTRAP_SERVERS'],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+        )
+    return _kafka_producer
 
 # OpenSearch client
 os_client = OpenSearch(os.environ['OPENSEARCH_HOST'], verify_certs=False)
@@ -96,6 +102,7 @@ def create_declaration(decl: Declaration):
             )
             decl_id = cur.fetchone()[0]
     # emit declaration event
+    producer = get_kafka_producer()
     producer.send(os.environ['KAFKA_DECLARATION_TOPIC'], decl.dict())
     # compute risk and persist
     risk = compute_risk(decl)
@@ -112,5 +119,6 @@ def create_declaration(decl: Declaration):
         logging.error(f"Failed to index declaration risk to OpenSearch: {e}")
         pass
     # emit risk event
+    producer = get_kafka_producer()
     producer.send(os.environ['KAFKA_RISK_TOPIC'], {"declaration_id": decl_id, **risk})
     return {"id": decl_id, "risk": risk}

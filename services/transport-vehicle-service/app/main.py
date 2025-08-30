@@ -52,10 +52,16 @@ def get_db():
 
 # Kafka producer setup
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-producer = KafkaProducer(
-    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    value_serializer=lambda v: json.dumps(v).encode("utf-8")
-)
+_kafka_producer = None
+
+def get_kafka_producer():
+    global _kafka_producer
+    if _kafka_producer is None:
+        _kafka_producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        )
+    return _kafka_producer
 
 @app.get("/health")
 def health_check():
@@ -83,6 +89,7 @@ def register_vehicle(vehicle: Vehicle, token=Depends(verify_token)):
         "vehicle_type": vehicle.vehicle_type,
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
+    producer = get_kafka_producer()
     producer.send("transport.vehicle.registered", event)
     producer.flush()
     return {"vin": vin}
