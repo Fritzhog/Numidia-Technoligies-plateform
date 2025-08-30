@@ -5,4 +5,3 @@ python-jose[cryptography]
 requests
 kafka-python
 opensearch-py
-psycopg2-pool
