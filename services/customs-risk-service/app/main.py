@@ -3,11 +3,15 @@ from pydantic import BaseModel
 import os
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
+from psycopg2 import OperationalError
 from kafka import KafkaProducer
+from kafka.errors import NoBrokersAvailable
 import json
 from opensearchpy import OpenSearch
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from contextlib import contextmanager
 import logging
+import time
 
 app = FastAPI()
 
@@ -24,11 +28,23 @@ _connection_pool = None
 def get_connection_pool():
     global _connection_pool
     if _connection_pool is None:
-        _connection_pool = SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            **DB_CONN
-        )
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                _connection_pool = SimpleConnectionPool(
+                    minconn=1,
+                    maxconn=10,
+                    **DB_CONN
+                )
+                break
+            except OperationalError as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"Database connection failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                    time.sleep(wait_time)
+                else:
+                    logging.error(f"Database connection failed after {max_retries} attempts: {e}")
+                    raise
     return _connection_pool
 
 logging.basicConfig(level=logging.INFO)
@@ -39,14 +55,46 @@ _kafka_producer = None
 def get_kafka_producer():
     global _kafka_producer
     if _kafka_producer is None:
-        _kafka_producer = KafkaProducer(
-            bootstrap_servers=os.environ['KAFKA_BOOTSTRAP_SERVERS'],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-        )
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                _kafka_producer = KafkaProducer(
+                    bootstrap_servers=os.environ['KAFKA_BOOTSTRAP_SERVERS'],
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                )
+                break
+            except NoBrokersAvailable as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"Kafka connection failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                    time.sleep(wait_time)
+                else:
+                    logging.error(f"Kafka connection failed after {max_retries} attempts: {e}")
+                    raise
     return _kafka_producer
 
 # OpenSearch client
-os_client = OpenSearch(os.environ['OPENSEARCH_HOST'], verify_certs=False)
+_opensearch_client = None
+
+def get_opensearch_client():
+    global _opensearch_client
+    if _opensearch_client is None:
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                _opensearch_client = OpenSearch(os.environ['OPENSEARCH_HOST'], verify_certs=False)
+                _opensearch_client.info()
+                break
+            except (OpenSearchConnectionError, Exception) as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"OpenSearch connection failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                    time.sleep(wait_time)
+                else:
+                    logging.warning(f"OpenSearch connection failed after {max_retries} attempts: {e}")
+                    _opensearch_client = None
+                    break
+    return _opensearch_client
 
 class Declaration(BaseModel):
     nin: str
@@ -114,7 +162,9 @@ def create_declaration(decl: Declaration):
             )
     # index into OpenSearch
     try:
-        os_client.index(index="declaration_risks", body={"declaration_id": decl_id, **risk})
+        os_client = get_opensearch_client()
+        if os_client:
+            os_client.index(index="declaration_risks", body={"declaration_id": decl_id, **risk})
     except Exception as e:
         logging.error(f"Failed to index declaration risk to OpenSearch: {e}")
         pass

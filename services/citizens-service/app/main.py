@@ -3,8 +3,11 @@ from pydantic import BaseModel
 import os
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
+from psycopg2 import OperationalError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from contextlib import contextmanager
+import logging
+import time
 # Token verification is simplified for this prototype
 
 app = FastAPI()
@@ -19,14 +22,28 @@ DB_CONN = {
 
 _connection_pool = None
 
+logging.basicConfig(level=logging.INFO)
+
 def get_connection_pool():
     global _connection_pool
     if _connection_pool is None:
-        _connection_pool = SimpleConnectionPool(
-            minconn=1,
-            maxconn=10,
-            **DB_CONN
-        )
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                _connection_pool = SimpleConnectionPool(
+                    minconn=1,
+                    maxconn=10,
+                    **DB_CONN
+                )
+                break
+            except OperationalError as e:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"Database connection failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+                    time.sleep(wait_time)
+                else:
+                    logging.error(f"Database connection failed after {max_retries} attempts: {e}")
+                    raise
     return _connection_pool
 
 # Simplified token verification – accepts any token
