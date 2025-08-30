@@ -23,12 +23,18 @@ DB_CONN = {
     'host': os.getenv("DB_HOST", "postgres"),
 }
 
-connection_pool = SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    cursor_factory=RealDictCursor,
-    **DB_CONN
-)
+_connection_pool = None
+
+def get_connection_pool():
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            cursor_factory=RealDictCursor,
+            **DB_CONN
+        )
+    return _connection_pool
 
 # Dummy verification for now
 def verify_token(token: str = Depends(oauth2_scheme)):
@@ -37,11 +43,12 @@ def verify_token(token: str = Depends(oauth2_scheme)):
 
 @contextmanager
 def get_db():
-    conn = connection_pool.getconn()
+    pool = get_connection_pool()
+    conn = pool.getconn()
     try:
         yield conn
     finally:
-        connection_pool.putconn(conn)
+        pool.putconn(conn)
 
 # Kafka producer setup
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")

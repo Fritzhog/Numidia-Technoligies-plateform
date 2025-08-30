@@ -19,11 +19,17 @@ DB_CONN = {
     'dbname': os.environ['DB_NAME'],
 }
 
-connection_pool = SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    **DB_CONN
-)
+_connection_pool = None
+
+def get_connection_pool():
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            **DB_CONN
+        )
+    return _connection_pool
 
 logging.basicConfig(level=logging.INFO)
 
@@ -45,12 +51,13 @@ class Declaration(BaseModel):
 
 @contextmanager
 def get_db():
-    conn = connection_pool.getconn()
+    pool = get_connection_pool()
+    conn = pool.getconn()
     try:
         conn.autocommit = True
         yield conn
     finally:
-        connection_pool.putconn(conn)
+        pool.putconn(conn)
 
 @app.get("/health")
 def health():
