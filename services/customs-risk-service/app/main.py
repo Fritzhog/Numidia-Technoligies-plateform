@@ -2,9 +2,12 @@ from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 import os
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 from kafka import KafkaProducer
 import json
 from opensearchpy import OpenSearch
+from contextlib import contextmanager
+import logging
 
 app = FastAPI()
 
@@ -15,6 +18,14 @@ DB_CONN = {
     'password': os.environ['DB_PASSWORD'],
     'dbname': os.environ['DB_NAME'],
 }
+
+connection_pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=10,
+    **DB_CONN
+)
+
+logging.basicConfig(level=logging.INFO)
 
 # Kafka producer
 producer = KafkaProducer(
@@ -32,10 +43,14 @@ class Declaration(BaseModel):
     origin_country: str
 
 
+@contextmanager
 def get_db():
-    conn = psycopg2.connect(**DB_CONN)
-    conn.autocommit = True
-    return conn
+    conn = connection_pool.getconn()
+    try:
+        conn.autocommit = True
+        yield conn
+    finally:
+        connection_pool.putconn(conn)
 
 @app.get("/health")
 def health():
@@ -86,7 +101,8 @@ def create_declaration(decl: Declaration):
     # index into OpenSearch
     try:
         os_client.index(index="declaration_risks", body={"declaration_id": decl_id, **risk})
-    except Exception:
+    except Exception as e:
+        logging.error(f"Failed to index declaration risk to OpenSearch: {e}")
         pass
     # emit risk event
     producer.send(os.environ['KAFKA_RISK_TOPIC'], {"declaration_id": decl_id, **risk})

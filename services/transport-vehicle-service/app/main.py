@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Depends
 from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 from psycopg2.extras import RealDictCursor
 import os
 import json
 import datetime
 from kafka import KafkaProducer
+from contextlib import contextmanager
 
 app = FastAPI()
 
@@ -13,23 +16,32 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 SECRET_KEY = "secret-key"
 ALGORITHM = "HS256"
 
+DB_CONN = {
+    'dbname': os.getenv("DB_NAME", "numidia"),
+    'user': os.getenv("DB_USER", "numidia"),
+    'password': os.getenv("DB_PASSWORD", "password"),
+    'host': os.getenv("DB_HOST", "postgres"),
+}
+
+connection_pool = SimpleConnectionPool(
+    minconn=1,
+    maxconn=10,
+    cursor_factory=RealDictCursor,
+    **DB_CONN
+)
+
 # Dummy verification for now
 def verify_token(token: str = Depends(oauth2_scheme)):
     # In a real implementation, decode and verify the JWT token
     return {"user_id": "user"}
 
+@contextmanager
 def get_db():
-    conn = psycopg2.connect(
-        dbname=os.getenv("POSTGRES_DB", "postgres"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        cursor_factory=RealDictCursor
-    )
+    conn = connection_pool.getconn()
     try:
         yield conn
     finally:
-        conn.close()
+        connection_pool.putconn(conn)
 
 # Kafka producer setup
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
@@ -42,26 +54,26 @@ producer = KafkaProducer(
 def health_check():
         return {"status": "ok"}
 
+class Vehicle(BaseModel):
+    vin: str
+    owner_nin: str
+    vehicle_type: str
+
 @app.post("/vehicles")
-def register_vehicle(vehicle: dict, token=Depends(verify_token), db=Depends(get_db)):
-    # Insert the vehicle into the database
-    with db.cursor() as cur:
-        cur.execute(
-            "INSERT INTO vehicles (vin, owner_nin, vehicle_type, registration_date) VALUES (%s, %s, %s, NOW()) RETURNING vin",
-            (
-                vehicle.get("vin"),
-                vehicle.get("owner_nin"),
-                vehicle.get("vehicle_type")
+def register_vehicle(vehicle: Vehicle, token=Depends(verify_token)):
+    with get_db() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO vehicles (vin, owner_nin, vehicle_type, registration_date) VALUES (%s, %s, %s, NOW()) RETURNING vin",
+                (vehicle.vin, vehicle.owner_nin, vehicle.vehicle_type)
             )
-        )
-        result = cur.fetchone()
-        db.commit()
-    vin = result["vin"] if result else vehicle.get("vin")
-    # Emit Kafka event
+            result = cur.fetchone()
+            db.commit()
+    vin = result["vin"] if result else vehicle.vin
     event = {
-        "vin": vehicle.get("vin"),
-                "owner_nin": vehicle.get("owner_nin"),
-        "vehicle_type": vehicle.get("vehicle_type"),
+        "vin": vehicle.vin,
+        "owner_nin": vehicle.owner_nin,
+        "vehicle_type": vehicle.vehicle_type,
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
     producer.send("transport.vehicle.registered", event)

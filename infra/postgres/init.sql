@@ -22,11 +22,15 @@ CREATE TABLE IF NOT EXISTS declaration_risks (
 
 CREATE TABLE IF NOT EXISTS vehicles (
     id SERIAL PRIMARY KEY,
-    license_plate VARCHAR UNIQUE,
-    nin VARCHAR REFERENCES citizens (nin),
-    model VARCHAR,
+    vin VARCHAR UNIQUE,
+    owner_nin VARCHAR REFERENCES citizens (nin),
+    vehicle_type VARCHAR,
     registration_date DATE DEFAULT CURRENT_DATE
 );
+
+CREATE INDEX IF NOT EXISTS idx_declarations_nin ON declarations(nin);
+CREATE INDEX IF NOT EXISTS idx_declaration_risks_declaration_id ON declaration_risks(declaration_id);
+CREATE INDEX IF NOT EXISTS idx_vehicles_nin ON vehicles(owner_nin);
 
 CREATE USER keycloak WITH PASSWORD 'keycloak';
 CREATE DATABASE keycloak OWNER keycloak;
