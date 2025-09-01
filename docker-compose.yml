@@ -153,6 +153,90 @@ services:
     ports:
       - "8003:8000"
 
+  data-integration-service:
+    build: ./services/data-integration-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+      - opensearch
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OPENSEARCH_HOST: http://opensearch:9200
+    ports:
+      - "8004:8000"
+
+  foundry-ontology-service:
+    build: ./services/foundry-ontology-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+      - opensearch
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OPENSEARCH_HOST: http://opensearch:9200
+    ports:
+      - "8005:8000"
+
+  analytics-engine-service:
+    build: ./services/analytics-engine-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+      - opensearch
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OPENSEARCH_HOST: http://opensearch:9200
+    ports:
+      - "8006:8000"
+
+  workflow-orchestration-service:
+    build: ./services/workflow-orchestration-service
+    restart: always
+    depends_on:
+      - postgres
+      - keycloak
+      - kafka
+      - opensearch
+    environment:
+      DB_HOST: postgres
+      DB_USER: numidia
+      DB_PASSWORD: password
+      DB_NAME: numidia
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: numidia
+      KEYCLOAK_CLIENT_ID: frontend
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OPENSEARCH_HOST: http://opensearch:9200
+    ports:
+      - "8007:8000"
+
   frontend:
     build: ./services/frontend
     restart: always
@@ -165,6 +249,10 @@ services:
       VITE_API_CITIZENS: http://localhost:8001
       VITE_API_CUSTOMS: http://localhost:8002
       VITE_API_TRANSPORT: http://localhost:8003
+      VITE_API_DATA_INTEGRATION: http://localhost:8004
+      VITE_API_ONTOLOGY: http://localhost:8005
+      VITE_API_ANALYTICS: http://localhost:8006
+      VITE_API_WORKFLOWS: http://localhost:8007
     ports:
       - "5173:5173"
 
@@ -176,6 +264,10 @@ services:
       - citizens-service
       - customs-risk-service
       - transport-vehicle-service
+      - data-integration-service
+      - foundry-ontology-service
+      - analytics-engine-service
+      - workflow-orchestration-service
       - keycloak
     environment:
       KEYCLOAK_URL: http://keycloak:8080
@@ -186,4 +278,8 @@ services:
       API_CITIZENS: http://citizens-service:8000
       API_CUSTOMS: http://customs-risk-service:8000
       API_TRANSPORT: http://transport-vehicle-service:8000
+      API_DATA_INTEGRATION: http://data-integration-service:8000
+      API_ONTOLOGY: http://foundry-ontology-service:8000
+      API_ANALYTICS: http://analytics-engine-service:8000
+      API_WORKFLOWS: http://workflow-orchestration-service:8000
     command: ["/bin/sh", "/app/run_smoke.sh"]
